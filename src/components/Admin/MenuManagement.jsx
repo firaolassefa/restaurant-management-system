@@ -1,16 +1,16 @@
 // src/components/Admin/MenuManagement.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "../Layout/Navbar";
 import Sidebar from "../Layout/Sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useMenu } from "../Context/MenuContext";
-
-
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { useMenu } from "../Context/MenuContext";
+import { useDropzone } from "react-dropzone";
 
 const categories = ["Appetizer", "Main Course", "Dessert", "Beverage"];
 
@@ -19,7 +19,6 @@ const MenuManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -28,9 +27,50 @@ const MenuManagement = () => {
     image: "",
     available: true,
   });
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [renderedItems, setRenderedItems] = useState([]);
 
-  // Filter items by search
-  const filteredItems = state.menuItems.filter(item =>
+  // Inject CSS for fade-in animation
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.innerHTML = `
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fadeIn {
+        animation-name: fadeIn;
+        animation-fill-mode: forwards;
+        animation-duration: 0.5s;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { document.head.removeChild(style); };
+  }, []);
+
+  // Fade-in animation effect
+  useEffect(() => {
+    setRenderedItems(
+      state.menuItems.map((item, index) => ({ ...item, animationDelay: index * 100 }))
+    );
+  }, [state.menuItems]);
+
+  // Dropzone for image upload
+  const onDrop = (acceptedFiles) => {
+    if (acceptedFiles && acceptedFiles[0]) {
+      const file = acceptedFiles[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setUploadedFile(reader.result);
+        setFormData({ ...formData, image: reader.result });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+
+  // Filter items
+  const filteredItems = renderedItems.filter(item =>
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -48,6 +88,7 @@ const MenuManagement = () => {
     if (item) {
       setEditingItem(item);
       setFormData({ ...item });
+      setUploadedFile(item.image || null);
     } else {
       setEditingItem(null);
       setFormData({
@@ -58,26 +99,22 @@ const MenuManagement = () => {
         image: "",
         available: true,
       });
+      setUploadedFile(null);
     }
     setModalOpen(true);
   };
 
-  // Handle input change
+  // Handle form change
   const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   // Submit form
   const handleSubmit = e => {
     e.preventDefault();
+    const newItem = { ...formData, price: parseFloat(formData.price) };
     if (editingItem) {
-      dispatch({
-        type: "UPDATE_MENU_ITEM",
-        payload: { ...editingItem, ...formData, price: parseFloat(formData.price) },
-      });
+      dispatch({ type: "UPDATE_MENU_ITEM", payload: { ...editingItem, ...newItem } });
     } else {
-      dispatch({
-        type: "ADD_MENU_ITEM",
-        payload: { id: Date.now(), ...formData, price: parseFloat(formData.price) },
-      });
+      dispatch({ type: "ADD_MENU_ITEM", payload: { id: Date.now(), ...newItem } });
     }
     setModalOpen(false);
   };
@@ -101,27 +138,38 @@ const MenuManagement = () => {
               className="mb-6"
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredItems.map(item => (
-                <Card key={item.id}>
-                  <div className="aspect-video bg-gray-200 relative">
-                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                    <Badge className={`absolute top-2 left-2 ${item.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredItems.map((item) => (
+                <Card
+                  key={item.id}
+                  className="relative overflow-hidden rounded-xl shadow-lg opacity-0 animate-fadeIn"
+                  style={{ animationDelay: `${item.animationDelay}ms` }}
+                >
+                  <div className="relative h-56 w-full bg-gray-100 group">
+                    <img
+                      src={item.image || "https://via.placeholder.com/400x225?text=No+Image"}
+                      alt={item.name}
+                      className="w-full h-full object-cover transform transition-transform duration-300 group-hover:scale-105"
+                    />
+                    <Badge className="absolute top-3 left-3 px-2 py-1 text-sm rounded bg-blue-100 text-blue-800">{item.category}</Badge>
+                    <Badge className={`absolute top-3 right-3 px-2 py-1 text-sm rounded ${item.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                       {item.available ? "Available" : "Unavailable"}
                     </Badge>
+                    <div className="absolute bottom-0 left-0 w-full bg-black bg-opacity-50 text-white text-center py-2 font-bold text-lg">
+                      {item.price.toFixed(2)}
+                    </div>
+                    <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <Button size="sm" onClick={() => openModal(item)}>Edit</Button>
+                      <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>Delete</Button>
+                      <Button size="sm" variant="outline" onClick={() => toggleAvailability(item.id)}>
+                        {item.available ? "Mark Unavailable" : "Mark Available"}
+                      </Button>
+                    </div>
                   </div>
-                  <CardHeader>
-                    <CardTitle>{item.name}</CardTitle>
-                    <p className="text-gray-600">{item.description}</p>
-                    <p className="mt-1 font-bold text-green-600">${item.price.toFixed(2)}</p>
+                  <CardHeader className="px-4 pt-4 pb-2">
+                    <CardTitle className="text-lg font-semibold">{item.name}</CardTitle>
+                    <p className="text-gray-600 text-sm mt-1">{item.description}</p>
                   </CardHeader>
-                  <CardContent className="flex justify-between">
-                    <Button onClick={() => toggleAvailability(item.id)}>
-                      {item.available ? "Mark Unavailable" : "Mark Available"}
-                    </Button>
-                    <Button onClick={() => openModal(item)}>Edit</Button>
-                    <Button variant="destructive" onClick={() => deleteItem(item.id)}>Delete</Button>
-                  </CardContent>
                 </Card>
               ))}
             </div>
@@ -138,13 +186,30 @@ const MenuManagement = () => {
               <Input name="name" value={formData.name} onChange={handleChange} placeholder="Item Name" required />
               <Input name="description" value={formData.description} onChange={handleChange} placeholder="Description" required />
               <Input type="number" step="0.01" name="price" value={formData.price} onChange={handleChange} placeholder="Price" required />
+
               <Select value={formData.category} onValueChange={value => setFormData({ ...formData, category: value })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {categories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input name="image" value={formData.image} onChange={handleChange} placeholder="Image URL" />
+
+              {/* Image Upload */}
+              <div className="space-y-2">
+                <Label>Menu Item Image</Label>
+                <div {...getRootProps()} className="border-2 border-dashed p-4 text-center rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                  <input {...getInputProps()} />
+                  {isDragActive
+                    ? <p>Drop the image here...</p>
+                    : <p>Drag & drop an image, or click to select a file</p>}
+                </div>
+                <p className="text-center text-sm text-gray-500">or paste an image URL below</p>
+                <Input name="image" value={formData.image} onChange={handleChange} placeholder="Enter image URL" />
+                {formData.image && (
+                  <img src={formData.image} alt="Preview" className="mt-2 w-full h-40 object-cover rounded-lg" />
+                )}
+              </div>
+
               <DialogFooter className="flex justify-end space-x-2">
                 <Button type="submit">{editingItem ? "Update" : "Add"}</Button>
                 <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
